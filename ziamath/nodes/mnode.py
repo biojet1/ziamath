@@ -13,6 +13,7 @@ from ..styles import MathStyle, parse_style
 from ..config import config
 from .. import operators
 from .nodetools import elementtext, infer_opform
+from .mnumber import Midentifier
 
 _node_classes: dict[str, Type['Mnode']] = {}
 
@@ -215,6 +216,20 @@ class Mnode(Drawable):
             rect.set('width', fmt((self.bbox.xmax - self.bbox.xmin)))
             rect.set('height', fmt((self.bbox.ymax - self.bbox.ymin)))
             rect.set('fill', str(self.style.mathbackground))
+
+        if config.use_group or config.data_text or config.pass_id_attr or config.pass_data_attr:
+            g = ET.SubElement(svg, "g")
+            g.set("data-mml", self.element.tag)
+            if config.data_text:
+                if isinstance(self, Midentifier):
+                    g.set("data-text", elementtext(self.element))
+            if config.pass_id_attr:
+                a = self.element.attrib.get('id')
+                a and g.set("id", a)
+            if config.pass_data_attr:
+                for (k, v) in self.element.attrib.items():
+                    k.startswith('data-') and v.set(k, v)
+            svg = g
 
         nodex = nodey = 0.
         for (nodex, nodey), node in zip(self.nodexy, self.nodes):
