@@ -57,6 +57,10 @@ class Config:
     minsizefraction: float = .3
     decimal_separator = '.'
     debug: DebugConfig = field(default_factory=DebugConfig)
+    use_group: bool = False
+    data_text: bool = False
+    pass_id_attr: bool = False
+    pass_data_attr: bool = False
 
     @property
     def svg2(self) -> bool:
