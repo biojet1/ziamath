@@ -13,7 +13,7 @@ from ..styles import MathStyle, parse_style
 from ..config import config
 from .. import operators
 from .nodetools import elementtext, infer_opform
-from .mnumber import Midentifier
+
 
 _node_classes: dict[str, Type['Mnode']] = {}
 
@@ -235,3 +235,5 @@ class Mnode(Drawable):
         for (nodex, nodey), node in zip(self.nodexy, self.nodes):
             node.draw(x+nodex, y+nodey, svg)
         return x+nodex, y+nodey
+
+from .mnumber import Midentifier
