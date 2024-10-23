@@ -52,6 +52,12 @@ def main():
         help='Use svg group')
     
     parser.add_argument(
+        '--debug',
+        '-d',
+        action='store_true',
+        help='Debug mode')
+    
+    parser.add_argument(
         '--size',
         '-s',
         type=int,
