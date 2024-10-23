@@ -44,7 +44,13 @@ def main():
         '-f',
         default=None,
         help='Font file (TTF/OTF). Must contain MATH table')
-
+    
+    parser.add_argument(
+        '--group',
+        '-g',
+        action='store_true',
+        help='Use svg group')
+    
     parser.add_argument(
         '--size',
         '-s',
@@ -73,6 +79,8 @@ def main():
         zm.config.svg2 = False
     if args.precision:
         zm.config.precision = args.precision
+    if args.group:
+        zm.config.use_group = True        
 
     kwargs = {'font': args.font,
               'size': args.size}
