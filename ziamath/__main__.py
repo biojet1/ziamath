@@ -88,8 +88,9 @@ def main():
     if args.group:
         zm.config.use_group = True        
     if args.debug:
-        zm.config.debug = True   
-        
+        zm.config.debug.baseline = True   
+        zm.config.debug.bbox = True  
+
     kwargs = {'font': args.font,
               'size': args.size}
 
