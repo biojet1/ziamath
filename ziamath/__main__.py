@@ -87,7 +87,9 @@ def main():
         zm.config.precision = args.precision
     if args.group:
         zm.config.use_group = True        
-
+    if args.debug:
+        zm.config.debug = True   
+        
     kwargs = {'font': args.font,
               'size': args.size}
 
