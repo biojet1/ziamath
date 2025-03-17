@@ -16,17 +16,10 @@ class MathFont(Font):
             fname: File name of font
             basesize: Default font size
     '''
-    def __init__(self, fname: Union[str, Path], basesize: float = 24):
+    def __init__(self, fname: Union[str, Path], basesize: float=24):
         super().__init__(fname)
         self.basesize = basesize
         if 'MATH' not in self.tables:
             raise ValueError('Font has no MATH table!')
-
         self.math = MathTable(self)
-        if 'math' in self.scripts():
-            self.language('math', '')
 
-    def language(self, script, language):
-        super().language(script, language)
-        if script == 'math':
-            self.features['ssty'] = True  # Enable math script variants

@@ -7,19 +7,18 @@ from __future__ import annotations
 from typing import Union, Sequence, Optional, TYPE_CHECKING
 from collections import namedtuple
 from dataclasses import dataclass
-import xml.etree.ElementTree as ET
 
 from ziafont.gpos import Coverage
 from ziafont.fontread import FontReader
-from ziafont.glyph import SimpleGlyph, CompoundGlyph
-from ziafont.fonttypes import BBox
+from ziafont import glyph
+from ziafont.fonttypes import Xform, BBox, GlyphComp
 
 if TYPE_CHECKING:
     from .mathfont import MathFont
 
 
-GlyphType = Union[SimpleGlyph, CompoundGlyph]
-
+GlyphType = Union[glyph.SimpleGlyph, glyph.CompoundGlyph]    
+    
 MathKernInfoRecord = namedtuple(
     'MathKernInfoRecord', ['topright', 'topleft', 'bottomright', 'bottomleft'])
 GlyphPartRecord = namedtuple(
@@ -194,8 +193,7 @@ class MathTable:
         italicscorrections = []
         for i in range(cnt):
             italicscorrections.append(read_valuerecord(self.fontfile))
-        italicscoverage = Coverage(self.ofst+ofst+italics+covofst,
-                                   self.fontfile, nulltable=(italics==0))
+        italicscoverage = Coverage(self.ofst+ofst+italics+covofst, self.fontfile, nulltable=(italics==0))
 
         # Top Accent Attachment Table
         self.fontfile.seek(self.ofst + ofst + topaccent)
@@ -204,17 +202,14 @@ class MathTable:
         accents = []
         for i in range(cnt):
             accents.append(read_valuerecord(self.fontfile))
-        accentcoverage = Coverage(
-            self.ofst+ofst+topaccent+covofst, self.fontfile, nulltable=(topaccent==0))
+        accentcoverage = Coverage(self.ofst+ofst+topaccent+covofst, self.fontfile, nulltable=(topaccent==0))
 
         # Extended Shape Coverage
-        extshapes = Coverage(
-            self.ofst+ofst+extendshape, self.fontfile, nulltable=(extendshape==0))
+        extshapes = Coverage(self.ofst+ofst+extendshape, self.fontfile, nulltable=(extendshape==0))
 
         # Kern Info
         if kernofst:
-            kerninfo = MathKernInfoTable(
-                self.ofst+ofst+kernofst, self.fontfile, nulltable=(kernofst==0))
+            kerninfo = MathKernInfoTable(self.ofst+ofst+kernofst, self.fontfile, nulltable=(kernofst==0))
         else:
             kerninfo = None
 
@@ -235,20 +230,16 @@ class MathTable:
         vertConstruction = []
         for i in range(vertcount):
             vofst = self.fontfile.readuint16()
-            vertConstruction.append(
-                MathConstructionTable(self.ofst+ofst+vofst, self.font, vert=True))
+            vertConstruction.append(MathConstructionTable(self.ofst+ofst+vofst, self.font, vert=True))
         horzConstruction = []
         for i in range(horzcount):
             hofst = self.fontfile.readuint16()
-            horzConstruction.append(
-                MathConstructionTable(self.ofst+ofst+hofst, self.font, vert=False))
+            horzConstruction.append(MathConstructionTable(self.ofst+ofst+hofst, self.font, vert=False))
 
         vertcoverage = Coverage(self.ofst + ofst + vertcovofst, self.fontfile)
         horzcoverage = Coverage(self.ofst + ofst + horzcovofst, self.fontfile)
-        self._variantsvert = MathVariants(
-            vertcoverage, vertConstruction, minoverlap, self.font, vert=True)
-        self._variantshorz = MathVariants(
-            horzcoverage, horzConstruction, minoverlap, self.font, vert=False)
+        self._variantsvert = MathVariants(vertcoverage, vertConstruction, minoverlap, self.font, vert=True)
+        self._variantshorz = MathVariants(horzcoverage, horzConstruction, minoverlap, self.font, vert=False)
 
     def kernsuper(self, glyph1: GlyphType, glyph2: GlyphType) -> tuple[int, int]:
         ''' Calculate superscript kerning between the two glyphs
@@ -265,8 +256,8 @@ class MathTable:
             return 0, max(self.consts.superscriptShiftUp,
                           self.consts.superscriptBottomMin)
 
-        glyph1_kern = self.kernInfo.glyph(glyph1.index)
-        glyph2_kern2 = self.kernInfo.glyph(glyph2.index)
+        g1 = self.kernInfo.glyph(glyph1.index)
+        g2 = self.kernInfo.glyph(glyph2.index)
 
         # Extended shape, need to raise superscript up, but only if we're using
         # a variant
@@ -275,16 +266,16 @@ class MathTable:
         else:
             shiftup = self.consts.superscriptShiftUp
 
-        height1 = shiftup + glyph2.path.bbox.ymin * self.consts.scriptPercentScaleDown/100
-        height2 = glyph1.path.bbox.ymax - shiftup
-        kern1 = kern2 = 0
-        if glyph1_kern:
-            kern1 += glyph1_kern.topright.getkern(height1)
-            kern2 += glyph1_kern.topright.getkern(height2)
-        if glyph2_kern2:
-            kern1 += glyph2_kern2.bottomleft.getkern(height1)
-            kern2 += glyph2_kern2.bottomleft.getkern(height2)
-        return min(kern1, kern2), shiftup
+        h1 = shiftup + glyph2.path.bbox.ymin * self.consts.scriptPercentScaleDown/100
+        h2 = glyph1.path.bbox.ymax - shiftup
+        k1 = k2 = 0
+        if g1:
+            k1 += g1.topright.getkern(h1)
+            k2 += g1.topright.getkern(h2)
+        if g2:
+            k1 += g2.bottomleft.getkern(h1)
+            k2 += g2.bottomleft.getkern(h2)
+        return min(k1, k2), shiftup
 
     def kernsub(self, glyph1: GlyphType, glyph2: GlyphType) -> tuple[int, int]:
         ''' Calculate subscript kerning
@@ -299,30 +290,25 @@ class MathTable:
         '''
         if self.kernInfo is None:
             return 0, max(self.consts.subscriptTopMax,
-                          self.consts.subscriptShiftDown)
+                           self.consts.subscriptShiftDown)
 
-        glyph1_kern = self.kernInfo.glyph(glyph1.index)
-        glyph2_kern = self.kernInfo.glyph(glyph2.index)
+        g1 = self.kernInfo.glyph(glyph1.index)
+        g2 = self.kernInfo.glyph(glyph2.index)
 
         # Correction heights
         shiftdn = self.consts.subscriptShiftDown - glyph1.path.bbox.ymin
-        height1 = -shiftdn + glyph2.path.bbox.ymax * self.consts.scriptPercentScaleDown/100
-        height2 = glyph1.path.bbox.ymin + shiftdn
-        kern1 = kern2 = 0
-        if glyph1_kern:
-            kern1 += glyph1_kern.bottomright.getkern(height1)
-            kern2 += glyph1_kern.bottomright.getkern(height2)
-        if glyph2_kern:
-            kern1 += glyph2_kern.topleft.getkern(height1)
-            kern2 += glyph2_kern.topleft.getkern(height2)
-        return min(kern1, kern2), shiftdn
+        h1 = -shiftdn + glyph2.path.bbox.ymax * self.consts.scriptPercentScaleDown/100
+        h2 = glyph1.path.bbox.ymin + shiftdn
+        k1 = k2 = 0
+        if g1:
+            k1 += g1.bottomright.getkern(h1)
+            k2 += g1.bottomright.getkern(h2)
+        if g2:
+            k1 += g2.topleft.getkern(h1)
+            k2 += g2.topleft.getkern(h2)
+        return min(k1, k2), shiftdn
 
-    def listvariants(self, glyphid: int, vert: bool = True) -> dict[int, int]:
-        if vert:
-            return self._variantsvert.listvariants(glyphid)
-        return self._variantshorz.listvariants(glyphid)
-
-    def variant(self, glyphid: int, height: float, vert: bool = True) -> GlyphType:
+    def variant(self, glyphid: int, height: float, vert: bool=True) -> GlyphType:
         ''' Get a height variant for the glyph
 
             glyphid: Glyph index
@@ -335,29 +321,9 @@ class MathTable:
             variant = self._variantshorz.getvariant(glyphid, height)
         return variant
 
-    def variant_minmax(self, glyphid: int, ymin: float, ymax: float,
-                       vert: bool = True) -> GlyphType:
-        ''' Get a height variant for the glyph that covers or exceeds the range (ymin, ymax)
-
-            Args:
-                glyphid: Glyph index
-                ymin: Minimum y value to contain
-                ymax: Maximum y value to contain
-                vert: Vertical variant or horizontal variant
-        '''
-        if vert:
-            variant = self._variantsvert.getvariant_minmax(glyphid, ymin=ymin, ymax=ymax)
-        else:
-            variant = self._variantshorz.getvariant_minmax(glyphid, ymin=ymin, ymax=ymax)
-        return variant
-
     def isextended(self, glyphid: int) -> bool:
         ''' Determine if glyph is an extended shape (has stretchy variants) '''
         return self._extendedShapeCoverage.covidx(glyphid) is not None
-
-    def topattachment(self, glyphid: int) -> Optional[float]:
-        ''' Get x-position to align an accent over the given base glyph ''' 
-        return self.topAccentAttachment.getvalue(glyphid)
 
 
 class MathConstructionTable:
@@ -368,7 +334,7 @@ class MathConstructionTable:
             font: Font
             vert: Vertical or horizontal variant
     '''
-    def __init__(self, ofst: int, font: 'MathFont', vert: bool = True):
+    def __init__(self, ofst: int, font: 'MathFont', vert: bool=True):
         fileptr = font.fontfile.tell()
         font.fontfile.seek(ofst)
         assemblyofst = font.fontfile.readuint16()
@@ -387,72 +353,6 @@ class MathConstructionTable:
         font.fontfile.seek(fileptr)
 
 
-class AssembledGlyph(SimpleGlyph):
-    ''' Assembled glyph from Math Assembly Table
-
-        Args:
-            index: glyph index
-            glyphs: list of glyphs included in the assembly
-            offsets: offset (either vertical or horizontal) for each
-                glyph in the assembly
-            vert: Vertical or horizontal assembly
-            font: Font instance
-    '''
-    def __init__(self,
-                 index: int,
-                 glyphs: Sequence[GlyphType],
-                 offsets: Sequence[float],
-                 vert: bool,
-                 font: 'MathFont'):
-        self.index = index
-        self.glyphs = glyphs
-        self.offsets = offsets
-        self.vert = vert
-
-        if self.vert:
-            xmin = min([g.path.bbox.xmin for g in glyphs])
-            xmax = max([g.path.bbox.xmax for g in glyphs])
-            ymin = int(glyphs[0].path.bbox.ymin + offsets[0])
-            ymax = int(glyphs[-1].path.bbox.ymax + offsets[-1])
-        else:
-            xmin = int(glyphs[0].path.bbox.xmin)
-            xmax = int(glyphs[-1].path.bbox.xmax + offsets[-1])
-            ymin = min([g.path.bbox.ymin for g in glyphs])
-            ymax = max([g.path.bbox.ymax for g in glyphs])
-        bbox = BBox(xmin, xmax, ymin, ymax)
-        self._xadvance = max([g.advance() for g in glyphs])
-        super().__init__(index, [], bbox, font)
-
-    def advance(self, nextchr=None) -> int:
-        ''' X-advance '''
-        if self.vert:
-            return self._xadvance
-        else:
-            return self.bbox.xmax
-
-    def svgpath(self, x0: float = 0, y0: float = 0,
-                scale_factor: float = 1) -> Optional[ET.Element]:
-        ''' Get svg <path> element for glyph, normalized to 12-point font '''
-        element = ET.Element('g')
-
-        for glyph, ofst in zip(self.glyphs, self.offsets):
-            path = ''
-            for operator in glyph.operators:
-                if self.vert:
-                    operator = operator.xform(1, 0, 0, 1, 0, ofst, 1, 1)
-                else:
-                    operator = operator.xform(1, 0, 0, 1, ofst, 0, 1, 1)
-                segment = operator.path(x0, y0, scale=self.funits_to_points(1, scale_factor))
-                if segment[0] == 'M' and path != '':
-                    path += 'Z '  # Close intermediate segments
-                path += segment
-            if path == '':
-                continue  # Don't add empty path
-            path += 'Z '
-            element.append(ET.Element('path', attrib={'d': path}))
-        return element
-
-
 class MathAssembly:
     ''' Math assembly table, for combining several glyphs to extend the size
         beyond the font built-in glyphs (for example, making a really big
@@ -463,7 +363,7 @@ class MathAssembly:
             font: Font
             vert: Vertical or horizontal variant
     '''
-    def __init__(self, ofst: int, font: 'MathFont', vert: bool = True):
+    def __init__(self, ofst: int, font: 'MathFont', vert: bool=True):
         self.vert = vert
         self.font = font
         font.fontfile.seek(ofst)
@@ -478,7 +378,7 @@ class MathAssembly:
                 font.fontfile.readuint16(),
                 font.fontfile.readuint16()))
 
-    def assemble(self, reqsize: float, minoverlap: float) -> AssembledGlyph:
+    def assemble(self, reqsize: float, minoverlap: float) -> glyph.CompoundGlyph:
         ''' Build glyph assembly, combining parts to create any required size
 
             Args:
@@ -486,7 +386,7 @@ class MathAssembly:
                 minoverlap: Minimum overlap from variants table
         '''
         size = 0.
-        num_extenders = 0
+        N = 0
 
         # Determine number of extender parts needed.
         while size < reqsize:
@@ -495,7 +395,7 @@ class MathAssembly:
             testparts = []
             for part in self.parts:
                 if part.partFlags:
-                    testparts.extend([part]*num_extenders)
+                    testparts.extend([part]*N)
                 else:
                     testparts.append(part)
 
@@ -505,35 +405,50 @@ class MathAssembly:
                     y -= minoverlap
                 y += part.fullAdvance
             size = y
-            num_extenders += 1
+            N += 1
 
         # Decrease overlap since full extenders make it too tall
-        try:
-            dy = (size - reqsize) / (len(testparts)-1)
-        except ZeroDivisionError:
-            dy = (size - reqsize)
+        dy = (size - reqsize) / (len(testparts)-1)
 
         # Build transforms for compound glyph
-        offsets = []
+        xforms = []
         if self.vert:
             y = -reqsize/2 + self.font.math.consts.axisHeight
+            ymin = y
         else:
             y = 0.
         for i, part in enumerate(testparts):
             if i > 0:
                 y -= minoverlap + dy
             if self.vert:
-                offsets.append(y - self.font.glyph_fromid(part.glyphId).bbox.ymin)
+                xforms.append(Xform(1, 0, 0, 1, 0, y, False))
             else:
-                offsets.append(y)
+                xforms.append(Xform(1, 0, 0, 1, y, 0, False))
             y += part.fullAdvance
+        size = y
 
         # Put together the CompoundGlyph
         glyphs = [self.font.glyph_fromid(part.glyphId) for part in testparts]
-
+        
         # Make a unique ID, negative so it can't clash with other glyphs
         glyfid = -(testparts[0].glyphId + int(reqsize) << 16)
-        return AssembledGlyph(glyfid, glyphs, offsets, vert=self.vert, font=self.font)
+
+        if self.vert:
+            xmin = min([g.path.bbox.xmin for g in glyphs])
+            xmax = max([g.path.bbox.xmax for g in glyphs])
+            ymin = min([ymin+g.path.bbox.ymin for g in glyphs])
+            ymax = size
+        else:
+            xmin = min([g.path.bbox.xmin for g in glyphs])
+            xmax = size
+            ymin = min([g.path.bbox.ymin for g in glyphs])
+            ymax = max([g.path.bbox.ymax for g in glyphs])
+
+        bbox = BBox(xmin, xmax, ymin, ymax)
+        gc = GlyphComp(glyphs, xforms, bbox)
+        glf = glyph.CompoundGlyph(glyfid, gc, self.font)
+        glf.advance = lambda x=bbox.xmax: x  # type: ignore
+        return glf
 
 
 class MathVariants:
@@ -548,18 +463,8 @@ class MathVariants:
         self.font = font
         self.vert = vert
 
-    def listvariants(self, glyphid: int) -> dict[int, int]:
-        ''' List all size variants '''
-        covidx = self.coverage.covidx(glyphid)
-        if covidx is None:
-            return {}
-
-        construction = self.construction[covidx]
-        return construction.variants
-
     def getvariant(self, glyphid: int, size: float) -> GlyphType:
         ''' Get the proper size variant for the glyphid '''
-        glf: GlyphType
         covidx = self.coverage.covidx(glyphid)
         if covidx is None:
             # Not covered by a variant
@@ -567,6 +472,7 @@ class MathVariants:
 
         construction = self.construction[covidx]
         variants = construction.variants
+        glf: GlyphType
         try:
             variantid = variants[min(k for k in variants if k >= size)]
 
@@ -579,36 +485,6 @@ class MathVariants:
         else:
             glf = self.font.glyph_fromid(variantid)
 
-        return glf
-
-    def getvariant_minmax(self, glyphid: int, ymin: float, ymax: float) -> GlyphType:
-        ''' Get the smallest variant that encloses ymin and ymax '''
-        glf: GlyphType
-        covidx = self.coverage.covidx(glyphid)
-        if covidx is None:
-            # Not covered by a variant
-            return self.font.glyph_fromid(glyphid)
-
-        construction = self.construction[covidx]
-        variants = construction.variants
-
-        gids = list(variants.values())
-        ymins = [self.font.glyph_fromid(gid).bbox.ymin for gid in gids]
-        ymaxs = [self.font.glyph_fromid(gid).bbox.ymax for gid in gids]
-        for gid, ymn, ymx in zip(gids, ymins, ymaxs):
-            if ymn <= ymin and ymx >= ymax:
-                glf = self.font.glyph_fromid(gid)
-                break
-        else:
-            height = ymax-ymin
-            if height > ymaxs[-1] - ymins[-1] and construction.assembly:
-                if self.vert:
-                    height = max(
-                        -2*(ymin+self.font.math.consts.axisHeight),
-                        2*(ymax-self.font.math.consts.axisHeight))
-                glf = construction.assembly.assemble(height, self.minoverlap)
-            else:
-                glf = self.font.glyph_fromid(gids[-1])
         return glf
 
 
@@ -646,8 +522,7 @@ class MathKernTable:
 
 class ZeroKern:
     ''' A kerning table with 0 kerning '''
-    def getkern(self, height: float) -> int:
-        ''' Get kerning for this height '''
+    def getkern(self, height):
         return 0
 
 

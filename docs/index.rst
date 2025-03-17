@@ -1,7 +1,7 @@
 Ziamath
 =======
 
-Ziamath renders MathML or LaTeX Math expressions as SVG paths using only the Python standard library. Does not require a Latex installation, nor rely on any third party or online services. It can use any math-enabled font, such as `STIXTwoMath-Regular <https://www.stixfonts.org/>`_ which comes included with Ziamath
+Ziamath renders MathML or LaTeX Math expressions as SVG paths using only the Python standard library. Does not require a Latex installation, nor rely on any third party services, but rather uses math-enabled fonts, such as `STIXTwoMath-Regular <https://www.stixfonts.org/>`_ which comes included with Ziamath
 for use by default. The resulting SVGs are drawn entirely with <path> elements, so the image does not depend on
 having the font available.
 
@@ -33,14 +33,14 @@ To render from Latex:
 
 .. jupyter-execute::
 
-    zm.Latex(r'\frac{1}{1-x^2}')
+    zm.Math.fromlatex(r'\frac{1}{1-x^2}')
 
 |
 
 Demo
 ----
 
-See Ziamath in action as it runs in your browser through PyScript `here <https://cdelker.github.io/pyscript/ziamath.html>`_!
+See Ziamath in action as it runs in your browser through PyScript `here <https://cdelker.bitbucket.io/pyscript/ziamath.html>`_!
 
 |
 
@@ -57,7 +57,7 @@ If you appreciate Ziamath, buy me a coffee to show your support!
 
 ----
 
-Source code is available on `Github <https://github.com/cdelker/ziamath>`_.
+Source code is available on `Bitbucket <https://bitbucket.org/cdelker/ziamath>`_.
 
 Ziamath is also used by the `Ziaplot <https://ziaplot.readthedocs.io>`_ and `Schemdraw <https://schemdraw.readthedocs.io>`_ Python packages, and was used for rendering the SVG and PNG equations on `MathGrabber <https://mathgrabber.com>`_.
 
@@ -70,7 +70,6 @@ Ziamath is also used by the `Ziaplot <https://ziaplot.readthedocs.io>`_ and `Sch
    :caption: Contents:
 
    usage.rst
-   options.rst
    examples.rst
    test.rst
    changes.rst

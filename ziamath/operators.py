@@ -6,8 +6,6 @@
     See Appendix F of MathML2 Documentation:
     https://www.w3.org/TR/MathML2/appendixf.html
 '''
-from __future__ import annotations
-
 
 operators = {
     ('(', 'prefix'):  {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},
@@ -18,13 +16,13 @@ operators = {
     ('}', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},
     ('”', 'postfix'): {'fence': 'true',  'lspace': '0em', 'rspace': '0em'},  # &CloseCurlyDoubleQuote;
     ('’', 'postfix'): {'fence': 'true',  'lspace': '0em', 'rspace': '0em'},  # &CloseCurlyQuote;
-    ('⟨', 'prefix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &LeftAngleBracket;
+    ('〈', 'prefix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &LeftAngleBracket;
     ('⌈', 'prefix'):  {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &LeftCeiling;
     ('⟪', 'prefix'):  {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &LeftDoubleBracket;
     ('⌊', 'prefix'):  {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &LeftFloor;
     ('“', 'prefix'):  {'fence': 'true',  'lspace': '0em', 'rspace': '0em'},  # &OpenCurlyDoubleQuote;
     ('‘', 'prefix'): {'fence': 'true',  'lspace': '0em', 'rspace': '0em'},  # &OpenCurlyQuote;
-    ('⟩', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &RightAngleBracket;
+    ('〉', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &RightAngleBracket;
     ('⌉', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &RightCeiling;
     ('〛', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &RightDoubleBracket;
     ('⌋', 'postfix'): {'fence': 'true', 'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},  # &RightFloor;
@@ -56,9 +54,8 @@ operators = {
     ('⊣', 'infix'): {'lspace': 'thickmathspace', 'rspace': 'thickmathspace'},  # &LeftTee;
     ('⊢', 'infix'): {'lspace': 'thickmathspace', 'rspace': 'thickmathspace'},  # &RightTee;
     ('⥰', 'infix'): {'lspace': 'thickmathspace', 'rspace': 'thickmathspace'},  # &RoundImplies;
-    ('|', 'infix'): {'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},
-    ('‖', 'infix'): {'stretchy': 'true',  'lspace': '0em', 'rspace': '0em'},
-    ('||', 'infix'): {'lspace': '0em', 'rspace': '0em'},
+    ('|', 'infix'): {'stretchy': 'true',  'lspace': 'thickmathspace', 'rspace': 'thickmathspace'},
+    ('||', 'infix'): {'lspace': 'mediummathspace', 'rspace': 'mediummathspace'},
     ('⩔', 'infix'): {'stretchy': 'true',  'lspace': 'mediummathspace', 'rspace': 'mediummathspace'},  # &Or;
     ('&&', 'infix'): {'lspace': 'thickmathspace', 'rspace': 'thickmathspace'},
     ('⩓', 'infix'): {'stretchy': 'true',  'lspace': 'mediummathspace', 'rspace': 'mediummathspace'},  # &And;
@@ -259,14 +256,13 @@ operators = {
     ('⋀', 'infix'): {'lspace': 'thinmathspace', 'rspace': 'thinmathspace'},  # &Wedge;
     ('⋄', 'infix'): {'lspace': 'thinmathspace', 'rspace': 'thinmathspace'},  # &Diamond;
     ('∖', 'infix'): {'stretchy': 'true',  'lspace': 'thinmathspace', 'rspace': 'thinmathspace'},  # &Backslash;
-    ('/','infix'): {'lspace': '0em', 'rspace': '0em'},
+    ('/','infix'): {'stretchy': 'true',  'lspace': 'thinmathspace', 'rspace': 'thinmathspace'},
     ('−', 'prefix'): {'lspace': '0em', 'rspace': 'veryverythinmathspace'},
     ('+', 'prefix'): {'lspace': '0em', 'rspace': 'veryverythinmathspace'},
     ('∓', 'prefix'): {'lspace': '0em', 'rspace': 'veryverythinmathspace'},
     ('±', 'prefix'): {'lspace': '0em', 'rspace': 'veryverythinmathspace'},
     ('.', 'infix'): {'lspace': '0em', 'rspace': '0em'},
     ('⨯', 'infix'): {'lspace': 'verythinmathspace', 'rspace': 'verythinmathspace'},  # &Cross;
-    ('×', 'infix'): {'lspace': 'verythinmathspace', 'rspace': 'verythinmathspace'},
     ('÷', 'infix'): {'lspace': 'verythinmathspace', 'rspace': 'verythinmathspace'},
     ('**', 'infix'): {'lspace': 'verythinmathspace', 'rspace': 'verythinmathspace'},
     ('⊙', 'infix'): {'lspace': 'verythinmathspace', 'rspace': 'verythinmathspace'},
@@ -354,23 +350,3 @@ operators = {
 
 
 integrals = ['∫', '∬', '∭', '∲', '∮', '∳', '∯', '∰', ]
-fences = [op[0] for op, params in operators.items() if params.get('fence') == 'true'] + ['|', '∣', '❘', '‖']
-leftfences = ['(', '[', '{', '⟨', '⌊', '⌈', '⟪']
-names = set(op[0] for op in operators.keys())
-
-
-def get_params(name: str, form: str) -> dict[str, str]:
-    ''' Get parameters for the given operator name and form '''
-    if form == 'none':
-        # form of 'none' is given to single element mrows like {,}
-        return {}
-
-    params = operators.get((name, form), {})
-    if not params:
-        params = operators.get((name, 'infix'), {})
-    if not params:
-        params = operators.get((name, 'postfix'), {})
-    if not params:
-        params = operators.get((name, 'prefix'), {})
-
-    return params.copy()

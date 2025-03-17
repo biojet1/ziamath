@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 from typing import Union, Literal, Tuple, Optional, Dict
-import warnings
 import re
-from collections import ChainMap
 from math import inf, cos, sin, radians
 from itertools import zip_longest
 import importlib.resources as pkg_resources
@@ -12,12 +10,16 @@ import xml.etree.ElementTree as ET
 
 import ziafont as zf
 from ziafont.glyph import fmt
+
 from .mathfont import MathFont
-from .nodes import Mnode
-from .styles import parse_style
+from .nodes import makenode, getstyle
 from .escapes import unescape
 from .config import config
-from .tex import tex2mml
+
+try:
+    from latex2mathml.converter import convert  # type: ignore
+except ImportError:
+    convert = False
 
 
 Halign = Literal['left', 'center', 'right']
@@ -35,22 +37,13 @@ def denamespace(element: ET.Element) -> ET.Element:
     return element
 
 
-def apply_mstyle(element: ET.Element) -> ET.Element:
-    ''' Take attributes defined in <mstyle> elements and add them
-        to all the child elements, removing the original <mstyle>
+def tex2mml(tex: str) -> str:
+    ''' Convert Latex to MathML. Do some hacky preprocessing to work around
+        some issues with generated MathML that ziamath doesn't support yet.
     '''
-    def flatten_attrib(element: ET.Element) -> None:
-        for child in element:
-            if element.tag == 'mstyle':
-                child.attrib = dict(ChainMap(child.attrib, element.attrib))
-            flatten_attrib(child)
-
-    flatten_attrib(element)
-
-    elmstr = ET.tostring(element).decode('utf-8')
-    elmstr = re.sub(r'<mstyle.+?>', '', elmstr)
-    elmstr = re.sub(r'</mstyle>', '', elmstr)
-    return ET.fromstring(elmstr)
+    tex = re.sub(r'\\binom{(.+?)}{(.+?)}', r'\\left( \1 \\atop \2 \\right)', tex)
+    tex = re.sub(r'\\mathrm{(.+?)}', r'\\mathrm {\1}', tex)  # latex2mathml bug requires space after mathrm
+    return convert(tex)
 
 
 class Math:
@@ -61,35 +54,34 @@ class Math:
             size: Base font size, pixels
             font: Filename of font file. Must contain MATH typesetting table.
     '''
+    # Math class doesn't have a color parameter since color is set
+    # by the <mathcolor> tags in MML. Since Math is a single line,
+    # alignment is done at the drawon function rather than the class level.
     def __init__(self, mathml: Union[str, ET.Element],
-                 size: Optional[float] = None, font: Optional[str] = None):
-        self.size = size if size else config.math.fontsize
-        font = font if font else config.math.mathfont
+                 size: float=24, font: str=None):
+        self.mathml = mathml
+        self.size = size
 
-        self.font: MathFont
         if font is None:
-            self.font = loadedfonts['default']
+            self.font = loadedfonts.get('default')
         elif font in loadedfonts:
-            self.font = loadedfonts[font]
+            self.font = loadedfonts.get(font)
         else:
-            self.font = MathFont(font, self.size)
+            self.font = MathFont(font, size)
             loadedfonts[font] = self.font
 
         if isinstance(mathml, str):
             mathml = unescape(mathml)
             mathml = ET.fromstring(mathml)
         mathml = denamespace(mathml)
-        mathml = apply_mstyle(mathml)
 
-        self.mathml = mathml
-        self.style = parse_style(mathml)
+        self.style = getstyle(mathml)
         self.element = mathml
-        self.mtag = 'math'
-        self.node = Mnode.fromelement(mathml, parent=self)  # type: ignore
+        self.node = makenode(mathml, parent=self, size=size)  # type: ignore
 
     @classmethod
-    def fromlatex(cls, latex: str, size: Optional[float] = None, mathstyle: Optional[str] = None,
-                  font: Optional[str] = None, color: Optional[str] = None, inline: bool = False):
+    def fromlatex(cls, latex: str, size: float=24, mathstyle: str=None,
+                  font: str=None, color: str=None):
         ''' Create Math Renderer from a single LaTeX expression. Requires
             latex2mathml Python package.
 
@@ -99,10 +91,12 @@ class Math:
                 mathstyle: Style parameter for math, equivalent to "mathvariant" MathML attribute
                 font: Font file name
                 color: Color parameter, equivalent to "mathcolor" attribute
-                inline: Use inline math mode (default is block mode)
         '''
+        if not convert:
+            raise ValueError('fromlatex requires latex2mathml package.')
+
         mathml: Union[str, ET.Element]
-        mathml = tex2mml(latex, inline=inline)
+        mathml = tex2mml(latex)
         if mathstyle:
             mathml = ET.fromstring(mathml)
             mathml.attrib['mathvariant'] = mathstyle
@@ -113,9 +107,9 @@ class Math:
         return cls(mathml, size, font)
 
     @classmethod
-    def fromlatextext(cls, latex: str, size: float = 24, mathstyle: Optional[str] = None,
-                      textstyle: Optional[str] = None, font: Optional[str] = None,
-                      color: Optional[str] = None):
+    def fromlatextext(cls, latex: str, size: float=24, mathstyle: str=None,
+                      textstyle: str=None, font: str=None,
+                      color: str=None):
         ''' Create Math Renderer from a sentence containing zero or more LaTeX
             expressions delimited by $..$, resulting in single MathML element.
             Requires latex2mathml Python package.
@@ -128,15 +122,12 @@ class Math:
                 font: Font file name
                 color: Color parameter, equivalent to "mathcolor" attribute
         '''
-        warnings.warn(r'fromlatextext is deprecated. Use ziamath.Text or \text{} command.', DeprecationWarning, stacklevel=2)
-
         # Extract each $..$, convert to MathML, but the raw text in <mtext>, and join
         # into a single <math>
-        parts = re.split(r'(\$+.*?\$+)', latex)
+        parts = re.split(r'\$(.*?)\$', latex)
         texts = parts[::2]
-        maths = [tex2mml(p.replace('$', ''), inline=not p.startswith('$$')) for p in parts[1::2]]
-        mathels = [ET.fromstring(m) for m in maths]   # Convert to xml, but drop opening <math>
-
+        maths = [tex2mml(p) for p in parts[1::2]]
+        mathels = [ET.fromstring(m)[0] for m in maths]   # Convert to xml, but drop opening <math>
         mml = ET.Element('math')
         for text, mathel in zip_longest(texts, mathels):
             if text:
@@ -145,13 +136,9 @@ class Math:
                     mtext.attrib['mathvariant'] = textstyle
                 mtext.text = text
             if mathel is not None:
-                child = mathel[0]
                 if mathstyle:
-                    child.attrib['mathvariant'] = mathstyle
-                if (dstyle := mathel.attrib.get('display')):
-                    child.attrib['displaystyle'] = {'inline': 'false',
-                                                    'block': 'true'}.get(dstyle, 'true')
-                mml.append(child)
+                    mathel.attrib['mathvariant'] = mathstyle
+                mml.append(mathel)
         if color:
             mml.attrib['mathcolor'] = color
         return cls(mml, size, font)
@@ -173,8 +160,8 @@ class Math:
         svg.attrib['viewBox'] = f'{fmt(bbox.xmin-1)} {fmt(-bbox.ymax-1)} {fmt(width)} {fmt(height)}'
         return svg
 
-    def drawon(self, svg: ET.Element, x: float = 0, y: float = 0,
-               halign: Halign = 'left', valign: Valign = 'base') -> ET.Element:
+    def drawon(self, svg: ET.Element, x: float=0, y: float=0,
+               halign: Halign='left', valign: Valign='base') -> ET.Element:
         ''' Draw the math expression on an existing SVG
 
             Args:
@@ -193,7 +180,7 @@ class Math:
         width, height = self.getsize()
         yshift = {'top': self.node.bbox.ymax,
                   'center': height/2 + self.node.bbox.ymin,
-                  'axis': self.node.units_to_points(self.font.math.consts.axisHeight),
+                  'axis': self.font.math.consts.axisHeight * self.node.emscale,  # type: ignore
                   'bottom': self.node.bbox.ymin}.get(valign, 0)
         xshift = {'center': -width/2,
                   'right': -width}.get(halign, 0)
@@ -215,13 +202,9 @@ class Math:
         ''' Jupyter SVG representation '''
         return self.svg()
 
-    def mathmlstr(self) -> str:
-        ''' Get MathML as string '''
-        return ET.tostring(self.mathml)
-
     @classmethod
     def mathml2svg(cls, mathml: Union[str, ET.Element],
-                   size: Optional[float] = None, font: Optional[str] = None):
+                   size: float=24, font: str=None):
         ''' Shortcut to just return SVG string directly '''
         return cls(mathml, size=size, font=font).svg()
 
@@ -235,37 +218,9 @@ class Math:
         return self.node.bbox.ymin
 
 
-class Latex(Math):
-    ''' Render Math from LaTeX
-
-        Args:
-            latex: Latex string
-            size: Base font size
-            mathstyle: Style parameter for math, equivalent to "mathvariant" MathML attribute
-            font: Font file name
-            color: Color parameter, equivalent to "mathcolor" attribute
-            inline: Use inline math mode (default is block mode)
-        '''
-    def __init__(self, latex: str, size: Optional[float] = None, mathstyle: Optional[str] = None,
-                 font: Optional[str] = None, color: Optional[str] = None, inline: bool = False):
-        self.latex = latex
-
-        mathml: Union[str, ET.Element]
-        mathml = tex2mml(latex, inline=inline)
-        if mathstyle:
-            mathml = ET.fromstring(mathml)
-            mathml.attrib['mathvariant'] = mathstyle
-            mathml = ET.tostring(mathml, encoding='unicode')
-        if color:
-            mathml = ET.fromstring(mathml)
-            mathml.attrib['mathcolor'] = color
-        super().__init__(mathml, size, font)
-
-
 class Text:
-    ''' Mixed text and latex math. Inline math delimited by single $..$, and
-        display-mode math delimited by double $$...$$. Can contain multiple
-        lines. Drawn to SVG.
+    ''' Mixed text and latex math, with math delimited by $..$. Drawn to SVG.
+        Can contain multiple lines.
 
         Args:
             s: string to write
@@ -283,18 +238,17 @@ class Text:
                 https://matplotlib.org/stable/gallery/text_labels_and_annotations/demo_text_rotation_mode.html
 
     '''
-    def __init__(self, s, textfont: Optional[str] = None, mathfont: Optional[str] = None,
-                 mathstyle: Optional[str] = None, size: Optional[float] = None, linespacing: Optional[float] = None,
-                 color: Optional[str] = None,
-                 halign: str = 'left', valign: str = 'base',
-                 rotation: float = 0, rotation_mode: str = 'anchor'):
+    def __init__(self, s, textfont: str=None, mathfont: str=None,
+                 mathstyle: str=None, size: float=24, linespacing: float=1,
+                 color: str=None,
+                 halign: str='left', valign: str='base',
+                 rotation: float=0, rotation_mode: str='anchor'):
         self.str = s
         self.mathfont = mathfont
         self.mathstyle = mathstyle
-        self.size = size if size else config.text.fontsize
-        self.linespacing = linespacing if linespacing else config.text.linespacing
+        self.size = size
+        self.linespacing = linespacing
         self.color = color
-        self.textcolor = color if color else config.text.color
         self._halign = halign
         self._valign = valign
         self.rotation = rotation
@@ -303,26 +257,14 @@ class Text:
 
         # textfont can be a path to font, or style type like "serif".
         # If style type, use Stix font variation
-        textfont = textfont if textfont else config.text.textfont
-        textstyle = config.text.variant
-        if loadedtextfonts.get(textfont) == 'notfound':  # type: ignore
+        if textfont is None:
+            textfont = 'sans'
+        if textfont in ['sans', 'sans-serif', 'serif']:
             self.textfont = None
             self.textstyle = textfont
-        elif textfont is None:
-            self.textfont = None
-            self.textstyle = textstyle
-        elif textfont in loadedtextfonts:
-            self.textfont = loadedtextfonts[textfont]
         else:
-            try:
-                self.textfont = zf.Font(textfont)
-                self.textstyle = textstyle
-                loadedtextfonts[str(textfont)] = self.textfont
-            except FileNotFoundError:
-                # Mark as not found to not search again
-                loadedtextfonts[textfont] = 'notfound'  # type: ignore
-                self.textfont = None
-                self.textstyle = textfont
+            self.textfont = zf.Font(textfont)
+            self.textstyle = 'sans'
 
     def svg(self) -> str:
         ''' Get expression as SVG string '''
@@ -335,7 +277,7 @@ class Text:
     def svgxml(self) -> ET.Element:
         ''' Get standalone SVG of expression as XML Element Tree '''
         svg = ET.Element('svg')
-        _, (x1, x2, y1, y2) = self._drawon(svg)
+        svgelm, (x1, x2, y1, y2) = self._drawon(svg)
         svg.attrib['width'] = fmt(x2-x1)
         svg.attrib['height'] = fmt(y2-y1)
         svg.attrib['xmlns'] = 'http://www.w3.org/2000/svg'
@@ -349,8 +291,8 @@ class Text:
         with open(fname, 'w') as f:
             f.write(self.svg())
 
-    def drawon(self, svg: ET.Element, x: float = 0, y: float = 0,
-               halign: Optional[str] = None, valign: Optional[str] = None) -> ET.Element:
+    def drawon(self, svg: ET.Element, x: float=0, y: float=0,
+               halign: str=None, valign: str=None) -> ET.Element:
         ''' Draw text on existing SVG element
 
             Args:
@@ -363,8 +305,8 @@ class Text:
         svgelm, _ = self._drawon(svg, x, y, halign, valign)
         return svgelm
 
-    def _drawon(self, svg: ET.Element, x: float = 0, y: float = 0,
-                halign: Optional[str] = None, valign: Optional[str] = None) -> Tuple[ET.Element, Tuple[float, float, float, float]]:
+    def _drawon(self, svg: ET.Element, x: float=0, y: float=0,
+                halign: str=None, valign: str=None) -> Tuple[ET.Element, Tuple[float, float, float, float]]:
         ''' Draw text on existing SVG element
 
             Args:
@@ -385,45 +327,27 @@ class Text:
         linesizes = []
         for line in lines:
             svgparts = []
-            parts = re.split(r'(\$+.*?\$+)', line)
+            parts = re.split(r'(\$.*?\$)', line)
             partsizes = []
             for part in parts:
                 if not part:
                     continue
-                if part.startswith('$$') and part.endswith('$$'):  # Display-mode math
-                    math = Math.fromlatex(part.replace('$', ''),
-                                          font=self.mathfont,
+                if part.startswith('$') and part.endswith('$'):  # Math
+                    math = Math.fromlatex(part.replace('$', ''), font=self.mathfont,
                                           mathstyle=self.mathstyle,
-                                          inline=False,
-                                          size=self.size, color=self.color)
-                    svgparts.append(math)
-                    partsizes.append(math.getsize())
-
-                elif part.startswith('$') and part.endswith('$'):  # Text-mode Math
-                    math = Math.fromlatex(part.replace('$', ''),
-                                          font=self.mathfont,
-                                          mathstyle=self.mathstyle,
-                                          inline=True,
                                           size=self.size, color=self.color)
                     svgparts.append(math)
                     partsizes.append(math.getsize())
                 else:  # Text
-                    part = part.replace('<', '&lt;').replace('>', '&gt;')
                     if self.textfont:
-                        # A specific font file is defined, use ziafont and ignore textstyle
-                        txt = zf.Text(part, font=self.textfont, size=self.size, color=self.textcolor)
+                        txt = zf.Text(part, font=self.textfont, size=self.size, color=self.color)
                         partsizes.append(txt.getsize())
-                        svgparts.append(txt)
                     else:
-                        # use math font with textstyle
-                        txt = Math.fromlatex(f'\\text{{{part}}}',
-                                             font=self.mathfont,
-                                             mathstyle=self.textstyle,
-                                             size=self.size,
-                                             color=self.textcolor)
-                        partsizes.append(txt.getsize())
+                        txt = Math.fromlatextext(part, textstyle=self.textstyle,
+                                                 size=self.size, color=self.color)
+                        partsizes.append((txt.node.bbox.xmax - txt.node.bbox.xmin,  # type: ignore
+                                          txt.node.size))  # type: ignore
                     svgparts.append(txt)
-
             if len(svgparts) > 0:
                 svglines.append(svgparts)
                 linesizes.append(partsizes)
@@ -433,11 +357,11 @@ class Text:
         linewidths = [sum(p[0] for p in line) for line in linesizes]
 
         if valign == 'bottom':
-            ystart = y - (len(lines)-1)*self.size*self.linespacing + lineofsts[-1]
+            ystart = y + sum(lineofsts) - sum(lineheights[1:])
         elif valign == 'top':
             ystart = y + lineheights[0] + lineofsts[0]
         elif valign == 'center':
-            ystart = y + (lineheights[0] + lineofsts[0] - (len(lines)-1)*self.size*self.linespacing + lineofsts[-1])/2
+            ystart = y + lineheights[0] + lineofsts[0] - sum(lineheights)/2
         else:  # 'base'
             ystart = y
 
@@ -453,13 +377,22 @@ class Text:
             xmin = min(xmin, xloc)
             xmax = max(xmax, xloc+linewidths[i])
 
+            # Include extra height of tall math expressions
+            drop = 0
+            if i > 0:
+                try:
+                    drop = min(p.node.bbox.ymin for p in line if isinstance(p, Math))
+                except ValueError:
+                    drop = 0
+
+            yloc -= drop
+            ymin = min(ymin, yloc-lineheights[i])
+            ymax = max(ymax, yloc-lineofsts[i])
             for part, size in zip(line, linesizes[i]):
                 part.drawon(svgelm, xloc, yloc)
                 xloc += size[0]
-            yloc += self.size * self.linespacing
+            yloc += lineheights[i] * self.linespacing
 
-        ymin = y - lineheights[0] - lineofsts[0]
-        ymax = yloc - self.size*self.linespacing - lineofsts[-1]
         if self.rotation:
             costh = cos(radians(self.rotation))
             sinth = sin(radians(self.rotation))
@@ -492,7 +425,7 @@ class Text:
                         bbox[2]+dy, bbox[3]+dy)
 
             xform += f' rotate({-self.rotation} {x} {y})'
-            if config.debug.bbox:
+            if config.debug:
                 rect = ET.SubElement(svg, 'rect')
                 rect.attrib['x'] = fmt(bbox[0])
                 rect.attrib['y'] = fmt(bbox[2])
@@ -506,25 +439,20 @@ class Text:
 
         return svgelm, (xmin, xmax, ymin, ymax)
 
-    def getsize(self) -> tuple[float, float]:
+    def getsize(self):
         ''' Get pixel width and height of Text. '''
         svg = ET.Element('svg')
         _, (xmin, xmax, ymin, ymax) = self._drawon(svg)
         return (xmax-xmin, ymax-ymin)
 
-    def bbox(self) -> tuple[float, float, float, float]:
+    def bbox(self):
         ''' Get bounding box (xmin, xmax, ymin, ymax) of Text. '''
         svg = ET.Element('svg')
         _, (xmin, xmax, ymin, ymax) = self._drawon(svg)
         return (xmin, xmax, ymin, ymax)
 
-    def getyofst(self) -> float:
-        ''' Y offset from baseline to bottom of bounding box '''
-        return -self.bbox()[3]
-
 
 # Cache the loaded fonts to prevent reloading all the time
 with pkg_resources.path('ziamath.fonts', 'STIXTwoMath-Regular.ttf') as p:
     fontname = p
-loadedfonts: Dict[str, MathFont] = {'default': MathFont(fontname)}
-loadedtextfonts: Dict[str, zf.Font] = {}
+loadedfonts: Dict[str, Union[zf.Font, MathFont]] = {'default': MathFont(fontname)}

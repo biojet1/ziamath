@@ -1,26 +1,21 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Union, MutableMapping
+
 import math
 import xml.etree.ElementTree as ET
 
+from .config import config
+from ziafont import Font
 from ziafont.fonttypes import BBox
 from ziafont.glyph import SimpleGlyph, fmt
-from .config import config
-from .styles import MathStyle
-
 
 class Drawable:
     ''' Base class for drawable nodes '''
-    mtag = 'drawable'
-    nodes: list[Drawable] = []
-
-    def __init__(self):
-        self.bbox = BBox(0, 0, 0, 0)
 
     def firstglyph(self) -> Optional[SimpleGlyph]:
         ''' Get the first glyph in this node '''
         return None
-
+        
     def lastglyph(self) -> Optional[SimpleGlyph]:
         ''' Get the last glyph in this node '''
         return None
@@ -29,42 +24,29 @@ class Drawable:
         ''' Get the last character in this node '''
         return None
 
-    def xadvance(self) -> float:
-        ''' X-advance for the glyph. Usually bbox.xmax '''
-        return self.bbox.xmax
-
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
-        ''' Draw the element. Must be subclassed. '''
         raise NotImplementedError
 
-
+        
 class Glyph(Drawable):
-    ''' A single glyph
-
-        Args:
-            glyph: The glyph to draw
-            char: unicode character represented by the glyph
-            size: point size
-            style: font MathStyle
-    '''
-    def __init__(self, glyph: SimpleGlyph, char: str, size: float,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+    ''' A single glyph '''
+    def __init__(self, glyph: SimpleGlyph, char: str, size: float, emscale: float,
+                 style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.glyph = glyph
         self.char = char
         self.size = size
+        self.emscale = emscale
         self.phantom = kwargs.get('phantom', False)
-        self.style = style if style else MathStyle()
-        self._funits_to_pts = self.size / self.glyph.font.info.layout.unitsperem
+        self.style = style if style is not None else {}
+        self._setup()
+
+    def _setup(self, **kwargs) -> None:
+        ''' Place the glyphs with 0, 0 positions '''
         self.bbox = BBox(
-            self.funit_to_points(self.glyph.path.bbox.xmin),
-            self.funit_to_points(self.glyph.path.bbox.xmax),
-            self.funit_to_points(self.glyph.path.bbox.ymin),
-            self.funit_to_points(self.glyph.path.bbox.ymax))
-        
-    def funit_to_points(self, value: float) -> float:
-        ''' Convert font units to SVG points '''
-        return value * self._funits_to_pts
+            self.glyph.path.bbox.xmin * self.emscale,
+            self.glyph.path.bbox.xmax * self.emscale,
+            self.glyph.path.bbox.ymin * self.emscale,
+            self.glyph.path.bbox.ymax * self.emscale)
 
     def firstglyph(self) -> Optional[SimpleGlyph]:
         ''' Get the first glyph in this node '''
@@ -77,10 +59,6 @@ class Glyph(Drawable):
     def lastchar(self) -> Optional[str]:
         ''' Get the last character in this node '''
         return self.char
-
-    def xadvance(self) -> float:
-        ''' X-advance for the glyph. Usually bbox.xmax '''
-        return self.funit_to_points(self.glyph.advance())
 
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
         ''' Draw the node on the SVG
@@ -98,22 +76,20 @@ class Glyph(Drawable):
             path = self.glyph.place(x, y, self.size)
             if path is not None:
                 svg.append(path)
-            if self.style.mathcolor and len(svg) > 0:
-                svg[-1].set('fill', str(self.style.mathcolor))
-        x += self.funit_to_points(self.glyph.advance())
+            if 'mathcolor' in self.style:
+                svg[-1].set('fill', self.style['mathcolor'])  # type: ignore
+        x += self.glyph.advance() * self.emscale
         return x, y
 
 
 class HLine(Drawable):
     ''' Horizontal Line. '''
-    def __init__(self, length: float, lw: float,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+    def __init__(self, length: float, lw: float, style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.length = length
         self.lw = lw
         self.phantom = kwargs.get('phantom', False)
-        self.bbox = BBox(0, self.length, -self.lw/2, self.lw/2)
-        self.style = style if style else MathStyle()
+        self.bbox = BBox(0, lw/2, self.length, self.lw)
+        self.style = style if style is not None else {}
 
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
         ''' Draw the node on the SVG
@@ -131,21 +107,19 @@ class HLine(Drawable):
             bar.attrib['y'] = fmt(y)
             bar.attrib['width'] = fmt(self.length)
             bar.attrib['height'] = fmt(self.lw)
-            if self.style.mathcolor:
-                bar.attrib['fill'] = str(self.style.mathcolor)
+            if 'mathcolor' in self.style:
+                bar.attrib['fill'] = self.style['mathcolor']  # type: ignore
         return x+self.length, y
 
-
+    
 class VLine(Drawable):
     ''' Vertical Line. '''
-    def __init__(self, height: float, lw: float,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+    def __init__(self, height: float, lw: float, style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.height = height
         self.lw = lw
         self.phantom = kwargs.get('phantom', False)
         self.bbox = BBox(0, self.lw, 0, self.height)
-        self.style = style if style else MathStyle()
+        self.style = style if style is not None else {}
 
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
         ''' Draw the node on the SVG
@@ -163,24 +137,23 @@ class VLine(Drawable):
             bar.attrib['y'] = fmt(y)
             bar.attrib['width'] = fmt(self.lw)
             bar.attrib['height'] = fmt(self.height)
-            if self.style.mathcolor:
-                bar.attrib['fill'] = str(self.style.mathcolor)
+            if 'mathcolor' in self.style:
+                bar.attrib['fill'] = self.style['mathcolor']  # type: ignore
         return x, y
-
-
+    
+    
 class Box(Drawable):
     ''' Box '''
     def __init__(self, width: float, height: float, lw: float,
-                 cornerradius: Optional[float] = None,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+                 cornerradius: float=None,
+                 style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.width = width
         self.height = height
         self.cornerradius = cornerradius
         self.lw = lw
         self.phantom = kwargs.get('phantom', False)
         self.bbox = BBox(0, self.width, 0, self.height)
-        self.style = style if style else MathStyle()
+        self.style = style if style is not None else {}
 
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
         ''' Draw the node on the SVG
@@ -197,28 +170,27 @@ class Box(Drawable):
             bar.set('width', fmt(self.width))
             bar.set('height', fmt(self.height))
             bar.set('stroke-width', fmt(self.lw))
-            bar.set('stroke', self.style.mathcolor)
-            bar.set('fill', self.style.mathbackground)
+            bar.set('stroke', self.style.get('mathcolor', 'black'))  # type: ignore
+            bar.set('fill', self.style.get('mathbackground', 'none'))  # type: ignore
             if self.cornerradius:
                 bar.set('rx', fmt(self.cornerradius))
-
+                
         return x+self.width, y
 
 
 class Diagonal(Drawable):
     ''' Diagonal Line - corners of Box '''
     def __init__(self, width: float, height: float, lw: float,
-                 arrow: bool = False,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+                 arrow: bool=False,
+                 style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.width = width
         self.height = height
         self.lw = lw
         self.arrow = arrow
         self.phantom = kwargs.get('phantom', False)
         self.bbox = BBox(0, self.width, 0, self.height)
-        self.style = style if style else MathStyle()
-
+        self.style = style if style is not None else {}
+        
         self.arroww = self.width
         self.arrowh = self.height
         if self.arrow:
@@ -251,24 +223,23 @@ class Diagonal(Drawable):
 
             bar.set('d', f'M {fmt(x)} {fmt(y-self.height)} L {fmt(x+self.width)} {fmt(y)}')
             bar.set('stroke-width', fmt(self.lw))
-            bar.set('stroke', self.style.mathcolor)
+            bar.set('stroke', self.style.get('mathcolor', 'black'))  # type: ignore
             if self.arrow:
                 bar.set('marker-end', 'url(#arrowhead)')
-
+                
         return x+self.width, y
 
-
+    
 class Ellipse(Drawable):
     ''' Ellipse '''
     def __init__(self, width: float, height: float, lw: float,
-                 style: Optional[MathStyle] = None, **kwargs):
-        super().__init__()
+                 style: MutableMapping[str, Union[str, bool]]=None, **kwargs):
         self.width = width
         self.height = height
         self.lw = lw
         self.phantom = kwargs.get('phantom', False)
         self.bbox = BBox(0, self.width, 0, self.height)
-        self.style = style if style else MathStyle()
+        self.style = style if style is not None else {}
 
     def draw(self, x: float, y: float, svg: ET.Element) -> tuple[float, float]:
         ''' Draw the node on the SVG
@@ -285,6 +256,6 @@ class Ellipse(Drawable):
             bar.set('rx', fmt(self.width/2))
             bar.set('ry', fmt(self.height/2))
             bar.set('stroke-width', fmt(self.lw))
-            bar.set('stroke', self.style.mathcolor)
-            bar.set('fill', self.style.mathbackground)
+            bar.set('stroke', self.style.get('mathcolor', 'black'))  # type: ignore
+            bar.set('fill', self.style.get('mathbackground', 'none'))  # type: ignore
         return x+self.width, y
